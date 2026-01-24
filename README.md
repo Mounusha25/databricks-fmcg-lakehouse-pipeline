@@ -1,0 +1,223 @@
+# End-to-End FMCG Data Engineering Pipeline (Databricks)
+
+## Overview
+
+This project implements a production-style Databricks Lakehouse pipeline to unify analytics across a parent FMCG enterprise and an acquired startup.
+
+The solution supports historical backfill, daily incremental ingestion, data quality enforcement, and BI-ready analytics.
+
+## Repository Structure
+
+```
+consolidated_pipeline/
+├── 1_setup/                          # Catalogs, schemas, date dimension
+│   ├── setup_catalogs.py             # Initialize Unity Catalog structure
+│   ├── dim_date_table_creation.py    # Monthly grain date dimension
+│   └── utilities.py                  # Shared configuration & schema names
+│
+├── 2_dimension_data_processing/      # Customer, product, pricing pipelines
+│   ├── 1_customer_data_processing.py # Customer dimension (Bronze → Silver → Gold)
+│   ├── 2_products_data_processing.py # Product dimension (Bronze → Silver → Gold)
+│   └── 3_pricing_data_processing.py  # Pricing dimension with temporal logic
+│
+└── 3_fact_data_processing/           # Full + incremental order processing
+    ├── 1_full_load_fact.py           # Historical backfill of orders
+    └── 2_incremental_load_fact.py    # Daily incremental order ingestion
+```
+
+## Architecture
+
+**Medallion Architecture (Bronze → Silver → Gold)**
+
+```
+S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready)
+                                      ↓
+                              Staging Tables
+                          (Incremental Processing)
+                                      ↓
+                    Consolidated Parent Gold Tables
+                                      ↓
+                    BI Dashboards / Databricks Genie
+```
+
+- **Bronze**: Raw data ingestion from S3, metadata capture
+- **Silver**: Data quality checks, deduplication, schema standardization
+- **Gold**: Business-ready facts and dimensions, monthly grain aggregation
+- **Staging**: Supports idempotent incremental loads with MERGE operations
+
+## Key Capabilities
+
+✅ **Batch Backfill + Daily Incremental Processing**
+- Full historical load for dimensions and facts
+- Delta incremental ingestion with idempotent staging tables
+
+✅ **Data Quality & Cleansing**
+- Duplicate detection and handling
+- Schema mismatch resolution
+- Invalid ID filtering
+- Metadata tracking (file_name, file_size, read_timestamp)
+
+✅ **Delta Lake & ACID Guarantees**
+- MERGE operations for idempotent upserts
+- Change Data Feed enabled for data lineage
+- Time-travel friendly design
+
+✅ **Enterprise Ready**
+- Databricks Jobs orchestration compatible
+- Parameterized notebooks (catalog, data_source widgets)
+- Monthly grain aggregation for reporting
+- Parent-child consolidated table strategy
+
+✅ **Analytics & Insights**
+- Delta Lake optimization for BI queries
+- Databricks Genie AI-driven dashboards
+- Fact table joins across customer, product, pricing dimensions
+
+## Tech Stack
+
+- **Databricks** – Unified data & AI platform
+- **PySpark** – Distributed data processing
+- **SQL** – Data transformation & analytics
+- **Delta Lake** – ACID transactional data lake
+- **AWS S3** – Data storage & orchestration
+- **Databricks Workflows** – Job scheduling & orchestration
+
+## Getting Started
+
+### Prerequisites
+
+- Databricks Workspace (Free Edition supported)
+- AWS S3 bucket for landing zone (`s3://sportsbar-analytics/`)
+- Sample FMCG data (customers, products, gross_price, orders CSVs)
+
+### Setup
+
+1. **Initialize Catalog & Schemas**
+   ```
+   Run: 1_setup/setup_catalogs.py
+   ```
+
+2. **Create Date Dimension**
+   ```
+   Run: 1_setup/dim_date_table_creation.py
+   ```
+
+3. **Load Dimensions** (in order)
+   ```
+   Run: 2_dimension_data_processing/1_customer_data_processing.py
+   Run: 2_dimension_data_processing/2_products_data_processing.py
+   Run: 2_dimension_data_processing/3_pricing_data_processing.py
+   ```
+
+4. **Load Facts**
+   ```
+   Run: 3_fact_data_processing/1_full_load_fact.py (first time)
+   Run: 3_fact_data_processing/2_incremental_load_fact.py (daily)
+   ```
+
+### Databricks Workflows
+
+Create a workflow with the following order:
+
+```
+┌─ Setup (setup_catalogs.py)
+├─ Date Dimension (dim_date_table_creation.py)
+├─ Dimensions (customer → products → pricing, in parallel)
+├─ Full Fact Load (1_full_load_fact.py)
+└─ Incremental Fact Load (2_incremental_load_fact.py) [runs daily]
+```
+
+## Data Model
+
+### Dimension Tables
+
+| Table | Grain | Key Columns |
+|-------|-------|-------------|
+| `sb_dim_customers` | Customer | customer_id, name, email |
+| `sb_dim_products` | Product | product_id, product_name, category |
+| `sb_dim_pricing` | Product × Effective Date | product_id, effective_date, price |
+| `sb_dim_date` | Month | date_key, year, quarter |
+
+### Fact Table
+
+| Table | Grain | Key Columns |
+|-------|-------|-------------|
+| `sb_fact_orders` | Order | order_id, customer_id, product_id, order_date |
+
+## Key Features
+
+### Change Data Feed (CDF)
+
+Enabled on all Bronze and Silver tables for:
+- Data lineage tracking
+- Downstream analytics
+- Audit trails
+
+```python
+.option("delta.enableChangeDataFeed", "true")
+```
+
+### Idempotent Processing
+
+Staging tables support duplicate runs:
+
+```python
+DeltaTable.forName(spark, gold_table)
+    .merge(staging_df, "ON pk = pk_staging")
+    .whenMatchedUpdateAll()
+    .whenNotMatchedInsertAll()
+    .execute()
+```
+
+### Parametrized Notebooks
+
+Each notebook accepts Databricks widgets:
+
+```
+catalog: fmcg (default)
+data_source: customers | products | gross_price | orders
+```
+
+## Monitoring & Troubleshooting
+
+### Check Data Quality
+
+```sql
+SELECT COUNT(*), COUNT(DISTINCT customer_id)
+FROM fmcg.silver.customers;
+```
+
+### View Change Data Feed
+
+```sql
+SELECT * FROM table_changes(fmcg.bronze.customers, 0);
+```
+
+### Inspect Staging Tables
+
+```sql
+SELECT * FROM fmcg.silver.customers_staging LIMIT 5;
+```
+
+## Notes
+
+- **Built on Databricks Free Edition** – No additional licenses required
+- **Data Anonymized** – Sample schemas for demonstration only
+- **S3 Path Structure** – Assumes `s3://sportsbar-analytics/{data_source}/`
+- **Monthly Grain** – Facts aggregated to monthly level for enterprise reporting
+
+## Future Enhancements
+
+- SCD Type 2 implementation for dimension history tracking
+- Real-time streaming with Kafka → Bronze
+- Automated data quality tests (Great Expectations)
+- dbt integration for transformation orchestration
+- Unity Catalog governance & lineage
+
+## License
+
+This project is provided as-is for educational and portfolio purposes.
+
+---
+
+**Author:** Mounusha Ram Metti
