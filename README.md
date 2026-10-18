@@ -54,6 +54,13 @@ S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready
 - Emits a machine-readable JSON quality report and supports a minimum-valid-rate deployment gate
 - Runs contract tests on every push and pull request through GitHub Actions
 
+✅ **Quarantine & Quality Observability**
+- Applies one shared PySpark contract to both full and incremental order loads
+- Preserves rejected records in `silver.quarantine_orders` with stable reason codes
+- Records run ID, load type, row counts, valid rate, and timestamp in `silver.order_quality_metrics`
+- Quarantines unknown product keys before fact-table joins instead of silently losing them
+- Keeps malformed customer IDs intact for investigation instead of replacing them with a sentinel value
+
 ✅ **Batch Backfill + Daily Incremental Processing**
 - Full historical load for dimensions and facts
 - Delta incremental ingestion with idempotent staging tables
@@ -212,6 +219,29 @@ data_source: customers | products | gross_price | orders
 ```
 
 ## Monitoring & Troubleshooting
+
+### View Pipeline Quality Metrics
+
+```sql
+SELECT *
+FROM fmcg.silver.order_quality_metrics
+ORDER BY measured_at DESC;
+```
+
+### Investigate Quarantined Records
+
+```sql
+SELECT reason, COUNT(*) AS rejected_rows
+FROM (
+  SELECT EXPLODE(quarantine_reasons) AS reason
+  FROM fmcg.silver.quarantine_orders
+)
+GROUP BY reason
+ORDER BY rejected_rows DESC;
+```
+
+Each quarantined record retains its raw date, source file metadata,
+`pipeline_run_id`, `load_type`, and `quarantined_at` timestamp.
 
 ### Check Data Quality
 

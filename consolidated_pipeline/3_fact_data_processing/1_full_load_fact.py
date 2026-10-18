@@ -34,6 +34,10 @@ from delta.tables import DeltaTable
 
 # COMMAND ----------
 
+# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/common/order_quality
+
+# COMMAND ----------
+
 print(bronze_schema, silver_schema, gold_schema)
 
 # COMMAND ----------
@@ -104,8 +108,8 @@ for file_info in files:
 
 # COMMAND ----------
 
-df_orders = spark.sql(f"SELECT * FROM {bronze_table}")
-df_orders.show(2)
+df_orders_raw = spark.sql(f"SELECT * FROM {bronze_table}")
+df_orders_raw.show(2)
 
 # COMMAND ----------
 
@@ -114,46 +118,35 @@ df_orders.show(2)
 
 # COMMAND ----------
 
-# 1. Keep only rows where order_qty is present
-df_orders = df_orders.filter(F.col("order_qty").isNotNull())
+# Apply the shared contract. Invalid values are preserved in
+# silver.quarantine_orders instead of being replaced by sentinel IDs or dropped.
+df_products = spark.table(f"{catalog}.{silver_schema}.products")
+df_joined, df_quarantined = split_valid_and_quarantined(df_orders_raw, df_products)
 
-
-# 2. Clean customer_id → keep numeric, else set to 999999
-df_orders = df_orders.withColumn(
-    "customer_id",
-    F.when(F.col("customer_id").rlike("^[0-9]+$"), F.col("customer_id"))
-     .otherwise("999999")
-     .cast("string")
+quality_metrics = persist_quality_results(
+    spark,
+    catalog=catalog,
+    silver_schema=silver_schema,
+    load_type="full",
+    raw=df_orders_raw,
+    valid=df_joined,
+    quarantined=df_quarantined,
 )
+print("Order quality metrics:", quality_metrics)
 
-# 3. Remove weekday name from the date text
-#    "Tuesday, July 01, 2025" → "July 01, 2025"
-df_orders = df_orders.withColumn(
-    "order_placement_date",
-    F.regexp_replace(F.col("order_placement_date"), r"^[A-Za-z]+,\s*", "")
+# Aggregate run-level metrics are appended to silver.order_quality_metrics.
+display(
+    df_quarantined
+    .select(F.explode("quarantine_reasons").alias("reason"))
+    .groupBy("reason")
+    .count()
+    .orderBy(F.desc("count"))
 )
-
-# 4. Parse order_placement_date using multiple possible formats
-df_orders = df_orders.withColumn(
-    "order_placement_date",
-    F.coalesce(
-        F.try_to_date("order_placement_date", "yyyy/MM/dd"),
-        F.try_to_date("order_placement_date", "dd-MM-yyyy"),
-        F.try_to_date("order_placement_date", "dd/MM/yyyy"),
-        F.try_to_date("order_placement_date", "MMMM dd, yyyy"),
-    )
-)
-
-# 5. Drop duplicates
-df_orders = df_orders.dropDuplicates(["order_id", "order_placement_date", "customer_id", "product_id", "order_qty"])
-
-# 5. convert product id to string
-df_orders = df_orders.withColumn('product_id', F.col('product_id').cast('string'))
 
 # COMMAND ----------
 
 # check what's the maximum and minimum date
-df_orders.agg(
+df_joined.agg(
     F.min("order_placement_date").alias("min_date"),
     F.max("order_placement_date").alias("max_date")
 ).show()
@@ -161,12 +154,9 @@ df_orders.agg(
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC **Join with products**
+# MAGIC **Validated orders with resolved products**
 
 # COMMAND ----------
-
-df_products = spark.table("fmcg.silver.products")
-df_joined = df_orders.join(df_products, on="product_id", how="inner").select(df_orders["*"], df_products["product_code"])
 
 df_joined.show(5)
 
