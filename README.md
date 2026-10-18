@@ -47,6 +47,13 @@ S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready
 
 ## Key Capabilities
 
+✅ **Automated Data Contracts & CI**
+- Validates required order columns before Databricks ingestion
+- Normalizes all supported source date formats
+- Flags invalid customer/product IDs, missing or non-positive quantities, and duplicate business keys
+- Emits a machine-readable JSON quality report and supports a minimum-valid-rate deployment gate
+- Runs contract tests on every push and pull request through GitHub Actions
+
 ✅ **Batch Backfill + Daily Incremental Processing**
 - Full historical load for dimensions and facts
 - Delta incremental ingestion with idempotent staging tables
@@ -91,6 +98,32 @@ S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready
 - Sample FMCG data (customers, products, gross_price, orders CSVs)
 
 ### Setup
+
+0. **Run the local landing-zone quality gate**
+   ```bash
+   python scripts/audit_orders.py \
+     '0_data/2_child_company/full_load/orders/landing/*.csv' \
+     --output reports/full-load-quality.json \
+     --fail-under 0.80
+   ```
+
+   The raw `0_data/` folder is intentionally kept local. CI tests the same
+   contract against controlled fixtures without requiring S3 or Databricks.
+
+   Baseline audit of the local full-load landing zone:
+
+   | Metric | Result |
+   |---|---:|
+   | Files scanned | 151 |
+   | Rows scanned | 51,810 |
+   | Valid rows | 40,997 (79.13%) |
+   | Duplicate records | 3,823 |
+   | Invalid customer IDs | 5,223 |
+   | Missing/invalid quantities | 2,607 |
+
+   The current source data intentionally fails the 80% quality gate. This
+   establishes a reproducible baseline for quarantine and remediation rather
+   than silently converting malformed keys to fallback IDs.
 
 1. **Initialize Catalog & Schemas**
    ```
