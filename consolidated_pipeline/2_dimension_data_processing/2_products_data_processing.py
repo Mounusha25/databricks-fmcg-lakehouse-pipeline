@@ -30,11 +30,11 @@ from delta.tables import DeltaTable
 
 # COMMAND ----------
 
-# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/1_setup/utilities
+# MAGIC %run ../1_setup/utilities
 
 # COMMAND ----------
 
-# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/common/scd2
+# MAGIC %run ../common/scd2
 
 # COMMAND ----------
 
@@ -44,11 +44,13 @@ print(bronze_schema, silver_schema, gold_schema)
 
 dbutils.widgets.text("catalog", "fmcg", "Catalog")
 dbutils.widgets.text("data_source", "products", "Data Source")
+dbutils.widgets.text("source_bucket", "sportsbar-analytics", "Source S3 Bucket")
 
 catalog = dbutils.widgets.get("catalog")
 data_source = dbutils.widgets.get("data_source")
+source_bucket = dbutils.widgets.get("source_bucket")
 
-base_path = f's3://sportsbar-analytics/{data_source}/*.csv'
+base_path = f's3://{source_bucket}/{data_source}/*.csv'
 print(base_path)
 
 # COMMAND ----------
@@ -267,31 +269,34 @@ df_gold.write\
 
 # COMMAND ----------
 
-delta_table = DeltaTable.forName(spark, "fmcg.gold.dim_products")
-df_child_products = spark.sql(f"SELECT product_code, division, category, product, variant FROM fmcg.gold.sb_dim_products;")
+parent_product_table = f"{catalog}.{gold_schema}.dim_products"
+df_child_products = spark.sql(f"SELECT product_code, division, category, product, variant FROM {catalog}.{gold_schema}.sb_dim_products;")
 df_child_products.show(5)
 
 # COMMAND ----------
 
-delta_table.alias("target").merge(
-    source=df_child_products.alias("source"),
-    condition="target.product_code = source.product_code"
-).whenMatchedUpdate(
-    set={
-        "division": "source.division",
-        "category": "source.category",
-        "product": "source.product",
-        "variant": "source.variant"
-    }
-).whenNotMatchedInsert(
-    values={
-        "product_code": "source.product_code",
-        "division": "source.division",
-        "category": "source.category",
-        "product": "source.product",
-        "variant": "source.variant"
-    }
-).execute()
+if not spark.catalog.tableExists(parent_product_table):
+    (
+        df_child_products.write.format("delta")
+        .option("delta.enableChangeDataFeed", "true")
+        .mode("overwrite")
+        .saveAsTable(parent_product_table)
+    )
+else:
+    delta_table = DeltaTable.forName(spark, parent_product_table)
+    (
+        delta_table.alias("target").merge(
+            source=df_child_products.alias("source"),
+            condition="target.product_code = source.product_code",
+        ).whenMatchedUpdate(
+            set={
+                "division": "source.division",
+                "category": "source.category",
+                "product": "source.product",
+                "variant": "source.variant",
+            }
+        ).whenNotMatchedInsertAll().execute()
+    )
 
 # COMMAND ----------
 

@@ -1,0 +1,49 @@
+bundle:
+  name: fmcg_lakehouse
+  databricks_cli_version: ">=0.278.0"
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog name used by every pipeline task.
+    default: fmcg
+  source_bucket:
+    description: S3 bucket containing customers, products, gross_price, and orders prefixes.
+    default: sportsbar-analytics
+  date_start:
+    description: First month included in the date dimension.
+    default: "2024-01-01"
+  date_end:
+    description: Last month included in the date dimension.
+    default: "2025-12-01"
+  incremental_schedule_status:
+    description: Whether the daily incremental schedule is active.
+    default: PAUSED
+
+sync:
+  include:
+    - consolidated_pipeline/**/*.py
+  exclude:
+    - 0_data/**
+    - reports/**
+    - tests/**
+    - .github/**
+
+targets:
+  dev:
+    default: true
+    mode: development
+    variables:
+      catalog: fmcg_dev
+      incremental_schedule_status: PAUSED
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: fmcg
+      incremental_schedule_status: UNPAUSED
+

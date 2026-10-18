@@ -18,7 +18,7 @@ def test_databricks_sources_are_valid_python():
 def test_both_order_paths_persist_quarantine_and_metrics():
     for path in (FULL_LOAD, INCREMENTAL):
         source = path.read_text(encoding="utf-8")
-        assert "%run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/common/order_quality" in source
+        assert "%run ../common/order_quality" in source
         assert "split_valid_and_quarantined" in source
         assert "persist_quality_results" in source
         assert "quarantine_orders" in source
@@ -47,7 +47,7 @@ def test_customer_and_product_notebooks_write_scd2_history():
     }
     for path, (business_key, history_table) in expectations.items():
         source = path.read_text(encoding="utf-8")
-        assert "%run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/common/scd2" in source
+        assert "%run ../common/scd2" in source
         assert "apply_scd2(" in source
         assert f'business_key="{business_key}"' in source
         assert history_table in source
@@ -57,4 +57,10 @@ def test_scd2_runtime_checks_single_current_version_invariant():
     source = SCD2_MODULE.read_text(encoding="utf-8")
     assert "_assert_single_current_version" in source
     assert "multiple current versions" in source
+
+
+def test_notebooks_do_not_depend_on_personal_workspace_paths():
+    for path in ROOT.glob("consolidated_pipeline/**/*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "/Workspace/Users/" not in source
 

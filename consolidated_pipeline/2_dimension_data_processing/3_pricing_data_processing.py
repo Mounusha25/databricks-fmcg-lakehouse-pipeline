@@ -31,7 +31,7 @@ from pyspark.sql.window import Window
 
 # COMMAND ----------
 
-# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/1_setup/utilities
+# MAGIC %run ../1_setup/utilities
 
 # COMMAND ----------
 
@@ -41,11 +41,13 @@ print(bronze_schema, silver_schema, gold_schema)
 
 dbutils.widgets.text("catalog", "fmcg", "Catalog")
 dbutils.widgets.text("data_source", "gross_price", "Data Source")
+dbutils.widgets.text("source_bucket", "sportsbar-analytics", "Source S3 Bucket")
 
 catalog = dbutils.widgets.get("catalog")
 data_source = dbutils.widgets.get("data_source")
+source_bucket = dbutils.widgets.get("source_bucket")
 
-base_path = f's3://sportsbar-analytics/{data_source}/*.csv'
+base_path = f's3://{source_bucket}/{data_source}/*.csv'
 print(base_path)
 
 # COMMAND ----------
@@ -155,7 +157,7 @@ df_silver.show(10)
 
 # We enrich the silver dataset by performing an inner join with the products table to fetch the correct product_code for each product_id.
 
-df_products = spark.table("fmcg.silver.products") 
+df_products = spark.table(f"{catalog}.{silver_schema}.products")
 df_joined = df_silver.join(df_products.select("product_id", "product_code"), on="product_id", how="inner")
 df_joined = df_joined.select("product_id", "product_code", "month", "gross_price", "read_timestamp", "file_name", "file_size")
 
@@ -200,7 +202,7 @@ df_gold.write\
 
 # COMMAND ----------
 
-df_gold_price = spark.table("fmcg.gold.sb_dim_gross_price")
+df_gold_price = spark.table(f"{catalog}.{gold_schema}.sb_dim_gross_price")
 df_gold_price.show(5)
 
 # COMMAND ----------
@@ -252,25 +254,25 @@ df_gold_latest_price.printSchema()
 
 # COMMAND ----------
 
-delta_table = DeltaTable.forName(spark, "fmcg.gold.dim_gross_price")
-
-
-delta_table.alias("target").merge(
-    source=df_gold_latest_price.alias("source"),
-    condition="target.product_code = source.product_code"
-).whenMatchedUpdate(
-    set={
-        "price_inr": "source.price_inr",
-        "year": "source.year"
-    }
-).whenNotMatchedInsert(
-    values={
-        "product_code": "source.product_code",
-        "price_inr": "source.price_inr",
-        "year": "source.year"
-    }
-).execute()
+parent_price_table = f"{catalog}.{gold_schema}.dim_gross_price"
+if not spark.catalog.tableExists(parent_price_table):
+    (
+        df_gold_latest_price.write.format("delta")
+        .option("delta.enableChangeDataFeed", "true")
+        .mode("overwrite")
+        .saveAsTable(parent_price_table)
+    )
+else:
+    delta_table = DeltaTable.forName(spark, parent_price_table)
+    (
+        delta_table.alias("target").merge(
+            source=df_gold_latest_price.alias("source"),
+            condition="target.product_code = source.product_code",
+        ).whenMatchedUpdate(
+            set={"price_inr": "source.price_inr", "year": "source.year"}
+        ).whenNotMatchedInsertAll().execute()
+    )
 
 # COMMAND ----------
 
- 
+

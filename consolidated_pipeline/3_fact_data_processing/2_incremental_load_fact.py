@@ -30,11 +30,11 @@ from delta.tables import DeltaTable
 
 # COMMAND ----------
 
-# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/1_setup/utilities
+# MAGIC %run ../1_setup/utilities
 
 # COMMAND ----------
 
-# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/common/order_quality
+# MAGIC %run ../common/order_quality
 
 # COMMAND ----------
 
@@ -44,11 +44,13 @@ print(bronze_schema, silver_schema, gold_schema)
 
 dbutils.widgets.text("catalog", "fmcg", "Catalog")
 dbutils.widgets.text("data_source", "orders", "Data Source")
+dbutils.widgets.text("source_bucket", "sportsbar-analytics", "Source S3 Bucket")
 
 catalog = dbutils.widgets.get("catalog")
 data_source = dbutils.widgets.get("data_source")
+source_bucket = dbutils.widgets.get("source_bucket")
 
-base_path = f's3://sportsbar-analytics/{data_source}'
+base_path = f's3://{source_bucket}/{data_source}'
 landing_path = f"{base_path}/landing/"
 processed_path = f"{base_path}/processed/"
 print("Base Path: ", base_path)
@@ -289,8 +291,24 @@ df_monthly_recalc.count()
 
 # COMMAND ----------
 
-gold_parent_delta = DeltaTable.forName(spark, f"{catalog}.{gold_schema}.fact_orders")
-gold_parent_delta.alias("parent_gold").merge(df_monthly_recalc.alias("child_gold"), "parent_gold.date = child_gold.date AND parent_gold.product_code = child_gold.product_code AND parent_gold.customer_code = child_gold.customer_code").whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+parent_fact_table = f"{catalog}.{gold_schema}.fact_orders"
+if not spark.catalog.tableExists(parent_fact_table):
+    (
+        df_monthly_recalc.write.format("delta")
+        .option("delta.enableChangeDataFeed", "true")
+        .mode("overwrite")
+        .saveAsTable(parent_fact_table)
+    )
+else:
+    gold_parent_delta = DeltaTable.forName(spark, parent_fact_table)
+    (
+        gold_parent_delta.alias("parent_gold").merge(
+            df_monthly_recalc.alias("child_gold"),
+            "parent_gold.date = child_gold.date AND "
+            "parent_gold.product_code = child_gold.product_code AND "
+            "parent_gold.customer_code = child_gold.customer_code",
+        ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+    )
 
 # COMMAND ----------
 
@@ -299,13 +317,11 @@ gold_parent_delta.alias("parent_gold").merge(df_monthly_recalc.alias("child_gold
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC DROP TABLE fmcg.bronze.staging_orders;
+spark.sql(f"DROP TABLE IF EXISTS {catalog}.{bronze_schema}.staging_orders")
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC DROP TABLE fmcg.silver.staging_orders;
+spark.sql(f"DROP TABLE IF EXISTS {catalog}.{silver_schema}.staging_orders")
 
 # COMMAND ----------
 

@@ -68,6 +68,14 @@ S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready
 - Adds `dimension_sk`, `effective_from`, `effective_to`, and `is_current` fields
 - Treats unchanged source replays as no-ops, with deterministic CI tests for idempotency
 
+✅ **Deployment as Code**
+- Defines manual historical and scheduled incremental Lakeflow Jobs in a Databricks bundle
+- Encodes task dependencies so facts cannot run before required dimensions
+- Isolates development in `fmcg_dev` with its schedule paused
+- Enables the production daily workflow at 02:00 UTC
+- Parameterizes the Unity Catalog, S3 bucket, and date range across every notebook
+- Includes an OIDC-based manual GitHub deployment workflow without long-lived tokens
+
 ✅ **Batch Backfill + Daily Incremental Processing**
 - Full historical load for dimensions and facts
 - Delta incremental ingestion with idempotent staging tables
@@ -173,6 +181,18 @@ Create a workflow with the following order:
 ├─ Full Fact Load (1_full_load_fact.py)
 └─ Incremental Fact Load (2_incremental_load_fact.py) [runs daily]
 ```
+
+The workflow is already encoded in `databricks.yml` and `resources/jobs.yml`.
+Deploy and run the development target with:
+
+```bash
+databricks bundle validate --target dev
+databricks bundle deploy --target dev
+databricks bundle run --target dev fmcg_initial_load
+```
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production deployment,
+variable overrides, schedule behavior, and GitHub OIDC configuration.
 
 ## Data Model
 

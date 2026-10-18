@@ -3,4 +3,6 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 reports/*.json
+.databricks/
+0_data/
 

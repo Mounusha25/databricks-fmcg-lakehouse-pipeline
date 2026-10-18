@@ -20,11 +20,11 @@ from delta.tables import DeltaTable
 
 # COMMAND ----------
 
-# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/1_setup/utilities
+# MAGIC %run ../1_setup/utilities
 
 # COMMAND ----------
 
-# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/common/scd2
+# MAGIC %run ../common/scd2
 
 # COMMAND ----------
 
@@ -34,11 +34,13 @@ print(bronze_schema, silver_schema, gold_schema)
 
 dbutils.widgets.text("catalog", "fmcg", "Catalog")
 dbutils.widgets.text("data_source", "customers", "Data Source")
+dbutils.widgets.text("source_bucket", "sportsbar-analytics", "Source S3 Bucket")
 
 catalog = dbutils.widgets.get("catalog")
 data_source = dbutils.widgets.get("data_source")
+source_bucket = dbutils.widgets.get("source_bucket")
 
-base_path = f's3://sportsbar-analytics/{data_source}/*.csv'
+base_path = f's3://{source_bucket}/{data_source}/*.csv'
 print(base_path)
 
 # COMMAND ----------
@@ -292,8 +294,8 @@ df_gold.write\
 
 # COMMAND ----------
 
-delta_table = DeltaTable.forName(spark, "fmcg.gold.dim_customers")
-df_child_customers = spark.table("fmcg.gold.sb_dim_customers").select(
+parent_customer_table = f"{catalog}.{gold_schema}.dim_customers"
+df_child_customers = spark.table(f"{catalog}.{gold_schema}.sb_dim_customers").select(
     F.col("customer_id").alias("customer_code"),
     "customer",
     "market",
@@ -303,10 +305,21 @@ df_child_customers = spark.table("fmcg.gold.sb_dim_customers").select(
 
 # COMMAND ----------
 
-delta_table.alias("target").merge(
-    source=df_child_customers.alias("source"),
-    condition="target.customer_code = source.customer_code"
-).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+if not spark.catalog.tableExists(parent_customer_table):
+    (
+        df_child_customers.write.format("delta")
+        .option("delta.enableChangeDataFeed", "true")
+        .mode("overwrite")
+        .saveAsTable(parent_customer_table)
+    )
+else:
+    delta_table = DeltaTable.forName(spark, parent_customer_table)
+    (
+        delta_table.alias("target").merge(
+            source=df_child_customers.alias("source"),
+            condition="target.customer_code = source.customer_code",
+        ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+    )
 
 # COMMAND ----------
 

@@ -19,6 +19,9 @@ Tech:
 
 # COMMAND ----------
 
+import re
+from datetime import date
+
 from pyspark.sql import functions as F
 
 # COMMAND ----------
@@ -28,9 +31,20 @@ from pyspark.sql import functions as F
 
 # COMMAND ----------
 
-# start date and end date
-start_date = "2024-01-01"
-end_date   = "2025-12-01"
+dbutils.widgets.text("catalog", "fmcg", "Catalog")
+dbutils.widgets.text("start_date", "2024-01-01", "Start Date")
+dbutils.widgets.text("end_date", "2025-12-01", "End Date")
+
+catalog = dbutils.widgets.get("catalog")
+start_date = dbutils.widgets.get("start_date")
+end_date = dbutils.widgets.get("end_date")
+
+if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", catalog):
+    raise ValueError(f"Invalid Unity Catalog identifier: {catalog!r}")
+start = date.fromisoformat(start_date)
+end = date.fromisoformat(end_date)
+if start > end:
+    raise ValueError("start_date must be on or before end_date")
 
 # COMMAND ----------
 
@@ -70,4 +84,4 @@ display(df)
 df.write \
     .mode("overwrite") \
     .format("delta") \
-    .saveAsTable("fmcg.gold.dim_date")
+    .saveAsTable(f"{catalog}.gold.dim_date")

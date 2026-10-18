@@ -103,6 +103,7 @@ Bronze Orders (New) → Cleanse → Silver Staging → MERGE Gold
 | **Storage** | Delta Lake (ACID, Time-travel) | Transactional data lake |
 | **Processing** | PySpark, SQL | Distributed transformation |
 | **Orchestration** | Databricks Workflows | Job scheduling & coordination |
+| **Deployment** | Databricks Declarative Automation Bundles | Versioned dev/prod jobs and configuration |
 | **Analytics** | Databricks Genie, Tableau | BI & self-service analytics |
 
 ## ACID & Consistency Guarantees
@@ -124,6 +125,22 @@ Bronze Orders (New) → Cleanse → Silver Staging → MERGE Gold
 - **Vertical**: Configurable cluster size for peak loads
 - **Incremental**: Daily loads process only new data
 - **Partitioning**: Implicit by data_source, extensible to by date
+
+## Deployment Topology
+
+```
+GitHub / local checkout
+        │
+        ├─ bundle validate
+        ├─ bundle deploy ── dev  → fmcg_dev (schedule paused)
+        └─ bundle deploy ── prod → fmcg     (02:00 UTC daily schedule)
+                                  │
+                                  ├─ initial-load job (manual)
+                                  └─ incremental job (scheduled)
+```
+
+Both targets deploy the same versioned notebooks. Catalog, landing bucket, date
+range, and schedule state are configuration values rather than source edits.
 
 ---
 

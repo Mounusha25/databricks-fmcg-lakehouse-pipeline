@@ -14,14 +14,18 @@ Tech:
 - Databricks Jobs compatible
 """
 
-# MAGIC %sql
-# MAGIC
-# MAGIC CREATE CATALOG IF NOT EXISTS fmcg;
-# MAGIC USE CATALOG fmcg;
+import re
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC CREATE SCHEMA IF NOT EXISTS fmcg.gold;
-# MAGIC CREATE SCHEMA IF NOT EXISTS fmcg.silver;
-# MAGIC CREATE SCHEMA IF NOT EXISTS fmcg.bronze;
+dbutils.widgets.text("catalog", "fmcg", "Catalog")
+catalog = dbutils.widgets.get("catalog")
+
+if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", catalog):
+    raise ValueError(f"Invalid Unity Catalog identifier: {catalog!r}")
+
+spark.sql(f"CREATE CATALOG IF NOT EXISTS `{catalog}`")
+for schema in ("bronze", "silver", "gold"):
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
+
+print(f"Catalog ready: {catalog} (bronze, silver, gold)")
