@@ -40,6 +40,8 @@
                     │      GOLD LAYER (Analytics)      │
                     │  sb_dim_customers                │
                     │  sb_dim_products                 │
+                    │  sb_dim_customers_history (SCD2) │
+                    │  sb_dim_products_history (SCD2)  │
                     │  sb_dim_pricing                  │
                     │  sb_dim_date                     │
                     │  [Upserted via MERGE]            │
@@ -73,9 +75,12 @@
 ### Dimension Processing (Full → Silver → Gold)
 
 ```
-Bronze → Cleanse/Deduplicate → Silver Staging → MERGE into Silver → Gold
-  ↓         (Schema Fix)          (Incremental)     (Aggregate)     (UPS)
-  └─────────────────────────────────────────────────────────────────→
+Bronze → Cleanse/Deduplicate → Silver → Current Snapshot + SCD2 History
+                                      │                │
+                                      │                ├─ Hash attributes
+                                      │                ├─ Expire changed version
+                                      │                └─ Insert new current version
+                                      └─ Compatibility table for current-state consumers
 ```
 
 ### Fact Processing (Bronze → Silver → Gold)

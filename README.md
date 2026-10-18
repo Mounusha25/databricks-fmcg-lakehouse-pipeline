@@ -61,6 +61,13 @@ S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready
 - Quarantines unknown product keys before fact-table joins instead of silently losing them
 - Keeps malformed customer IDs intact for investigation instead of replacing them with a sentinel value
 
+✅ **Slowly Changing Dimensions (SCD Type 2)**
+- Preserves customer and product attribute history in dedicated Delta tables
+- Uses stable business keys plus SHA-256 attribute hashes for change detection
+- Expires the previous version and inserts a new current version in one staged `MERGE`
+- Adds `dimension_sk`, `effective_from`, `effective_to`, and `is_current` fields
+- Treats unchanged source replays as no-ops, with deterministic CI tests for idempotency
+
 ✅ **Batch Backfill + Daily Incremental Processing**
 - Full historical load for dimensions and facts
 - Delta incremental ingestion with idempotent staging tables
@@ -175,6 +182,8 @@ Create a workflow with the following order:
 |-------|-------|-------------|
 | `sb_dim_customers` | Customer | customer_id, name, email |
 | `sb_dim_products` | Product | product_id, product_name, category |
+| `sb_dim_customers_history` | Customer version | dimension_sk, customer_id, effective_from, effective_to, is_current |
+| `sb_dim_products_history` | Product version | dimension_sk, product_id, effective_from, effective_to, is_current |
 | `sb_dim_pricing` | Product × Effective Date | product_id, effective_date, price |
 | `sb_dim_date` | Month | date_key, year, quarter |
 
@@ -208,6 +217,19 @@ DeltaTable.forName(spark, gold_table)
     .whenNotMatchedInsertAll()
     .execute()
 ```
+
+### Query Dimension History
+
+```sql
+SELECT customer_id, customer, city, effective_from, effective_to, is_current
+FROM fmcg.gold.sb_dim_customers_history
+WHERE customer_id = '789403'
+ORDER BY effective_from;
+```
+
+The existing `sb_dim_customers` and `sb_dim_products` tables remain current-state
+snapshots for compatibility. Their corresponding `_history` tables are the
+authoritative SCD Type 2 records.
 
 ### Parametrized Notebooks
 

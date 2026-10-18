@@ -34,6 +34,10 @@ from delta.tables import DeltaTable
 
 # COMMAND ----------
 
+# MAGIC %run /Workspace/Users/metti.mounu@gmail.com/consolidated_pipeline/common/scd2
+
+# COMMAND ----------
+
 print(bronze_schema, silver_schema, gold_schema)
 
 # COMMAND ----------
@@ -236,6 +240,17 @@ df_silver.write\
 df_silver = spark.sql(f"SELECT * FROM {catalog}.{silver_schema}.{data_source};")
 df_gold = df_silver.select("product_code", "product_id", "division", "category", "product", "variant")
 df_gold.show(5)
+
+# COMMAND ----------
+
+product_scd2_metrics = apply_scd2(
+    spark,
+    source=df_gold,
+    target_table=f"{catalog}.{gold_schema}.sb_dim_products_history",
+    business_key="product_id",
+    tracked_columns=["product_code", "division", "category", "product", "variant"],
+)
+print("Product SCD2 metrics:", product_scd2_metrics)
 
 # COMMAND ----------
 
