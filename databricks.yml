@@ -9,9 +9,9 @@ variables:
   catalog:
     description: Unity Catalog name used by every pipeline task.
     default: fmcg
-  source_bucket:
-    description: S3 bucket containing customers, products, gross_price, and orders prefixes.
-    default: sportsbar-analytics
+  source_root:
+    description: Root URI containing customers, products, gross_price, and orders prefixes.
+    default: s3://sportsbar-analytics
   date_start:
     description: First month included in the date dimension.
     default: "2024-01-01"
@@ -37,6 +37,7 @@ targets:
     mode: development
     variables:
       catalog: fmcg_dev
+      source_root: /Volumes/fmcg_dev/bronze/landing
       incremental_schedule_status: PAUSED
 
   prod:

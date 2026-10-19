@@ -1,3 +1,4 @@
+# Databricks notebook source
 """Reusable PySpark quality controls for order fact ingestion."""
 
 from __future__ import annotations

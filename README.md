@@ -30,7 +30,7 @@ consolidated_pipeline/
 **Medallion Architecture (Bronze → Silver → Gold)**
 
 ```
-S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready)
+S3 or UC Volume → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready)
                                       ↓
                               Staging Tables
                           (Incremental Processing)
@@ -40,7 +40,7 @@ S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready
                     BI Dashboards / Databricks Genie
 ```
 
-- **Bronze**: Raw data ingestion from S3, metadata capture
+- **Bronze**: Raw data ingestion from S3 or a Unity Catalog Volume, metadata capture
 - **Silver**: Data quality checks, deduplication, schema standardization
 - **Gold**: Business-ready facts and dimensions, monthly grain aggregation
 - **Staging**: Supports idempotent incremental loads with MERGE operations
@@ -73,7 +73,7 @@ S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready
 - Encodes task dependencies so facts cannot run before required dimensions
 - Isolates development in `fmcg_dev` with its schedule paused
 - Enables the production daily workflow at 02:00 UTC
-- Parameterizes the Unity Catalog, S3 bucket, and date range across every notebook
+- Parameterizes the Unity Catalog, source URI, and date range across every notebook
 - Includes an OIDC-based manual GitHub deployment workflow without long-lived tokens
 
 ✅ **Batch Backfill + Daily Incremental Processing**
@@ -116,7 +116,7 @@ S3 Landing Zone → Bronze (Raw) → Silver (Cleansed) → Gold (Analytics Ready
 ### Prerequisites
 
 - Databricks Workspace (Free Edition supported)
-- AWS S3 bucket for landing zone (`s3://sportsbar-analytics/`)
+- Databricks managed Volume for Free Edition, or an S3 landing zone for production
 - Sample FMCG data (customers, products, gross_price, orders CSVs)
 
 ### Setup
@@ -188,8 +188,14 @@ Deploy and run the development target with:
 ```bash
 databricks bundle validate --target dev
 databricks bundle deploy --target dev
+databricks bundle run --target dev fmcg_prepare_storage
+./scripts/upload_demo_data.sh
 databricks bundle run --target dev fmcg_initial_load
 ```
+
+The development target uses the managed Volume
+`/Volumes/fmcg_dev/bronze/landing`, so the portfolio demo does not require an
+AWS account. Production retains the `s3://sportsbar-analytics` default.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production deployment,
 variable overrides, schedule behavior, and GitHub OIDC configuration.
@@ -308,16 +314,14 @@ SELECT * FROM fmcg.silver.customers_staging LIMIT 5;
 
 - **Built on Databricks Free Edition** – No additional licenses required
 - **Data Anonymized** – Sample schemas for demonstration only
-- **S3 Path Structure** – Assumes `s3://sportsbar-analytics/{data_source}/`
+- **Portable Landing Zone** – Development uses a managed Volume; production defaults to `s3://sportsbar-analytics/{data_source}/`
 - **Monthly Grain** – Facts aggregated to monthly level for enterprise reporting
 
 ## Future Enhancements
 
-- SCD Type 2 implementation for dimension history tracking
 - Real-time streaming with Kafka → Bronze
-- Automated data quality tests (Great Expectations)
 - dbt integration for transformation orchestration
-- Unity Catalog governance & lineage
+- Fine-grained Unity Catalog grants for multi-team deployments
 
 ## License
 

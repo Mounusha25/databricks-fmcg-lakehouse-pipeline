@@ -1,3 +1,4 @@
+# Databricks notebook source
 """Reusable Delta Lake Slowly Changing Dimension Type 2 merge."""
 
 from __future__ import annotations

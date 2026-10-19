@@ -28,4 +28,6 @@ spark.sql(f"CREATE CATALOG IF NOT EXISTS `{catalog}`")
 for schema in ("bronze", "silver", "gold"):
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
 
-print(f"Catalog ready: {catalog} (bronze, silver, gold)")
+spark.sql(f"CREATE VOLUME IF NOT EXISTS `{catalog}`.`bronze`.`landing`")
+
+print(f"Catalog ready: {catalog} (bronze, silver, gold; bronze.landing volume)")

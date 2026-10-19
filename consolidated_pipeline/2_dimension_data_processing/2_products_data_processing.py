@@ -15,6 +15,8 @@ Tech:
 - Databricks Jobs compatible
 """
 
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Import Required Libraries**
 
@@ -44,13 +46,13 @@ print(bronze_schema, silver_schema, gold_schema)
 
 dbutils.widgets.text("catalog", "fmcg", "Catalog")
 dbutils.widgets.text("data_source", "products", "Data Source")
-dbutils.widgets.text("source_bucket", "sportsbar-analytics", "Source S3 Bucket")
+dbutils.widgets.text("source_root", "s3://sportsbar-analytics", "Source Root URI")
 
 catalog = dbutils.widgets.get("catalog")
 data_source = dbutils.widgets.get("data_source")
-source_bucket = dbutils.widgets.get("source_bucket")
+source_root = dbutils.widgets.get("source_root").rstrip("/")
 
-base_path = f's3://{source_bucket}/{data_source}/*.csv'
+base_path = f'{source_root}/{data_source}/*.csv'
 print(base_path)
 
 # COMMAND ----------

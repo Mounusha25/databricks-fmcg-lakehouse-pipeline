@@ -8,10 +8,11 @@ QUALITY_MODULE = ROOT / "consolidated_pipeline/common/order_quality.py"
 SCD2_MODULE = ROOT / "consolidated_pipeline/common/scd2.py"
 CUSTOMERS = ROOT / "consolidated_pipeline/2_dimension_data_processing/1_customer_data_processing.py"
 PRODUCTS = ROOT / "consolidated_pipeline/2_dimension_data_processing/2_products_data_processing.py"
+PRICING = ROOT / "consolidated_pipeline/2_dimension_data_processing/3_pricing_data_processing.py"
 
 
 def test_databricks_sources_are_valid_python():
-    for path in (FULL_LOAD, INCREMENTAL, QUALITY_MODULE, SCD2_MODULE, CUSTOMERS, PRODUCTS):
+    for path in (FULL_LOAD, INCREMENTAL, QUALITY_MODULE, SCD2_MODULE, CUSTOMERS, PRODUCTS, PRICING):
         compile(path.read_text(encoding="utf-8"), str(path), "exec")
 
 
@@ -63,4 +64,27 @@ def test_notebooks_do_not_depend_on_personal_workspace_paths():
     for path in ROOT.glob("consolidated_pipeline/**/*.py"):
         source = path.read_text(encoding="utf-8")
         assert "/Workspace/Users/" not in source
+
+
+def test_ingestion_notebooks_accept_portable_source_root():
+    ingestion_paths = (FULL_LOAD, INCREMENTAL, CUSTOMERS, PRODUCTS, PRICING)
+    for path in ingestion_paths:
+        source = path.read_text(encoding="utf-8")
+        assert 'dbutils.widgets.text("source_root"' in source
+        assert "source_bucket" not in source
+
+
+def test_shared_run_targets_are_databricks_notebooks():
+    for path in (QUALITY_MODULE, SCD2_MODULE):
+        assert path.read_text(encoding="utf-8").startswith("# Databricks notebook source\n")
+
+
+def test_magic_cells_begin_at_a_command_boundary():
+    for path in ROOT.glob("consolidated_pipeline/**/*.py"):
+        source = path.read_text(encoding="utf-8")
+        for command in source.split("# COMMAND ----------"):
+            meaningful = [line for line in command.splitlines() if line.strip()]
+            magic_lines = [line for line in meaningful if line.startswith("# MAGIC")]
+            if magic_lines:
+                assert meaningful[0].startswith("# MAGIC"), path
 
