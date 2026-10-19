@@ -1,5 +1,7 @@
 # End-to-End FMCG Data Engineering Pipeline (Databricks)
 
+![FMCG Databricks Lakehouse Pipeline banner](banner.png)
+
 ## Overview
 
 This project implements a production-style Databricks Lakehouse pipeline to unify analytics across a parent FMCG enterprise and an acquired startup.
